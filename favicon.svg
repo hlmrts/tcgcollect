@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="CardVault">
+  <defs>
+    <linearGradient id="bg" x1="15%" y1="10%" x2="85%" y2="90%">
+      <stop offset="0%" stop-color="#1a1e2c"/>
+      <stop offset="70%" stop-color="#0b0d14"/>
+    </linearGradient>
+    <radialGradient id="glowY" cx="25%" cy="15%" r="55%">
+      <stop offset="0%" stop-color="#ffcb05" stop-opacity="0.35"/>
+      <stop offset="100%" stop-color="#ffcb05" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="glowR" cx="80%" cy="88%" r="55%">
+      <stop offset="0%" stop-color="#e0302d" stop-opacity="0.35"/>
+      <stop offset="100%" stop-color="#e0302d" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="brand" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ffd23d"/>
+      <stop offset="55%" stop-color="#ff9a3d"/>
+      <stop offset="100%" stop-color="#e0302d"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="512" height="512" rx="116" fill="url(#bg)"/>
+  <rect width="512" height="512" rx="116" fill="url(#glowY)"/>
+  <rect width="512" height="512" rx="116" fill="url(#glowR)"/>
+  <rect width="512" height="512" rx="116" fill="none" stroke="#2a2f40" stroke-width="2"/>
+
+  <g>
+    <rect x="176" y="130" width="130" height="182" rx="16" transform="rotate(-16 241 221)" fill="#2a2f40" stroke="#3a4054" stroke-width="4"/>
+    <rect x="206" y="130" width="130" height="182" rx="16" transform="rotate(10 271 221)" fill="#353b52" stroke="#454c68" stroke-width="4"/>
+    <rect x="191" y="160" width="130" height="182" rx="16" fill="url(#brand)"/>
+    <path d="M256 210 l10 24 26 4-19 18 5 26-22-13-22 13 5-26-19-18 26-4z" fill="#ffffff" opacity="0.9"/>
+  </g>
+</svg>
