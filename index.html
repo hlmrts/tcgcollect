@@ -1,180 +1,168 @@
-// api/pokemon.js
-// Anbindung an die Pokémon TCG API (https://pokemontcg.io).
-// Kostenlos nutzbar, ein optionaler API-Key erhöht das Rate-Limit deutlich.
-// Registrierung: https://dev.pokemontcg.io/
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CardVault – TCG Sammlungs-Tracker</title>
+  <meta name="description" content="Verwalte deine Pokémon- und One-Piece-Kartensammlungen: Fortschritt, Wert und Wunschliste." />
+  <link rel="manifest" href="site.webmanifest" />
+  <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+  <link rel="icon" href="icon-32.png" sizes="32x32" type="image/png" />
+  <link rel="icon" href="icon-16.png" sizes="16x16" type="image/png" />
+  <link rel="apple-touch-icon" href="apple-touch-icon.png" />
+  <meta name="theme-color" content="#0b0d14" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-mark">🗂️</span>
+        <span>CardVault</span>
+      </div>
 
-const BASE = "https://api.pokemontcg.io/v2";
+      <div class="game-switch" role="tablist" aria-label="Spiel wählen">
+        <button type="button" class="game-tab active" data-game="pokemon" role="tab" aria-selected="true">
+          <span class="dot dot-pokemon"></span> Pokémon
+        </button>
+        <button type="button" class="game-tab" data-game="onepiece" role="tab" aria-selected="false">
+          <span class="dot dot-onepiece"></span> One Piece
+        </button>
+      </div>
 
-// Optional: eigenen kostenlosen API-Key eintragen für höhere Rate-Limits.
-// Siehe README.md -> "API-Keys".
-const API_KEY = "";
+      <div class="currency-switch segmented" id="currencySwitch">
+        <button type="button" class="segmented-btn" data-currency="EUR">EUR</button>
+        <button type="button" class="segmented-btn" data-currency="USD">USD</button>
+      </div>
+    </header>
 
-const SETS_CACHE_KEY = "cardvault:cache:pokemon:sets:v1";
-const SETS_CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24h
+    <!-- ================= Dashboard-Ansicht ================= -->
+    <main id="view-dashboard" class="view active">
+      <div class="view-header dashboard-header">
+        <div>
+          <h1>Meine Sammlungen</h1>
+          <p class="muted">Behalte den Überblick über Wert, Fortschritt und Wunschliste.</p>
+        </div>
+        <div class="dashboard-actions">
+          <button type="button" id="importBtn" class="btn btn-ghost">Importieren</button>
+          <input type="file" id="importFileInput" accept="application/json" hidden />
+          <button type="button" id="exportBtn" class="btn btn-ghost">Exportieren</button>
+          <button type="button" id="newCollectionBtn" class="btn btn-primary">+ Neue Sammlung</button>
+        </div>
+      </div>
 
-function headers() {
-  const h = { Accept: "application/json" };
-  if (API_KEY) h["X-Api-Key"] = API_KEY;
-  return h;
-}
+      <div id="emptyState" class="empty-state" hidden>
+        <div class="empty-emblem">📦</div>
+        <h2>Noch keine Sammlung</h2>
+        <p class="muted">Lege deine erste Sammlung an, um Karten zu erfassen.</p>
+        <button type="button" class="btn btn-primary" data-action="open-create">+ Neue Sammlung</button>
+      </div>
 
-// Kleine, kuratierte Fallback-Liste bekannter Sets, falls die Live-API
-// (z. B. wegen Netzwerkproblemen) nicht erreichbar ist.
-const FALLBACK_SETS = [
-  { id: "base1", name: "Base Set", series: "Base", logo: null, total: 102 },
-  { id: "sv8", name: "Surging Sparks", series: "Scarlet & Violet", logo: null, total: 191 },
-  { id: "sv7", name: "Stellar Crown", series: "Scarlet & Violet", logo: null, total: 142 },
-  { id: "swsh12", name: "Silver Tempest", series: "Sword & Shield", logo: null, total: 195 },
-  { id: "xy1", name: "XY", series: "XY", logo: null, total: 146 },
-];
+      <div id="collectionsGrid" class="collections-grid" hidden></div>
+    </main>
 
-export async function fetchSets() {
-  try {
-    const cached = readSetsCache();
-    if (cached) return cached;
+    <!-- ================= Sammlungs-Detailansicht ================= -->
+    <main id="view-collection" class="view">
+      <div class="collection-header">
+        <button type="button" id="backToDashboard" class="btn btn-ghost">← Zurück</button>
 
-    const res = await fetch(
-      `${BASE}/sets?orderBy=-releaseDate&pageSize=250`,
-      { headers: headers() }
-    );
-    if (!res.ok) throw new Error(`API antwortete mit Status ${res.status}`);
-    const json = await res.json();
-    const sets = (json.data || []).map((s) => ({
-      id: s.id,
-      name: s.name,
-      series: s.series,
-      logo: s.images?.logo || null,
-      releaseDate: s.releaseDate,
-      total: s.printedTotal || s.total || null,
-    }));
-    writeSetsCache(sets);
-    return sets;
-  } catch (err) {
-    console.warn("Pokémon-Sets konnten nicht geladen werden, nutze Fallback-Liste:", err);
-    return FALLBACK_SETS;
-  }
-}
+        <div class="collection-title-block">
+          <h1 id="collectionTitle">–</h1>
+          <p id="collectionSubtitle" class="muted">–</p>
+        </div>
 
-function readSetsCache() {
-  try {
-    const raw = localStorage.getItem(SETS_CACHE_KEY);
-    if (!raw) return null;
-    const { ts, sets } = JSON.parse(raw);
-    if (Date.now() - ts > SETS_CACHE_TTL_MS) return null;
-    return sets;
-  } catch {
-    return null;
-  }
-}
+        <div class="collection-value">
+          <div>
+            <div class="value-label">Gesamtwert</div>
+            <div class="value-amount" id="collectionTotalValue">–</div>
+          </div>
+          <div class="value-trend" id="collectionTrend"></div>
+        </div>
 
-function writeSetsCache(sets) {
-  try {
-    localStorage.setItem(
-      SETS_CACHE_KEY,
-      JSON.stringify({ ts: Date.now(), sets })
-    );
-  } catch {
-    /* Speicher evtl. voll – ignorieren */
-  }
-}
+        <button type="button" id="deleteCollectionBtn" class="btn btn-danger-ghost">Löschen</button>
+      </div>
 
-/**
- * Sucht eine Karte anhand von Set-ID und Kartennummer.
- * Gibt ein normalisiertes Kartenobjekt zurück oder wirft einen Fehler,
- * wenn keine Karte gefunden wurde.
- */
-export async function fetchCardByNumber(setId, number) {
-  const cleanNumber = String(number).trim();
-  const query = encodeURIComponent(`set.id:${setId} number:${cleanNumber}`);
+      <div id="progressRow" class="progress-row" hidden>
+        <div class="progress-info">
+          <span id="progressLabel">0 / 0 Karten</span>
+          <button type="button" id="toggleMissingBtn" class="link-btn">Fehlende Karten anzeigen</button>
+        </div>
+        <div class="progress-track">
+          <div id="progressFill" class="progress-fill" style="width: 0%"></div>
+        </div>
+      </div>
 
-  let res;
-  try {
-    res = await fetch(`${BASE}/cards?q=${query}`, { headers: headers() });
-  } catch (err) {
-    throw new Error(
-      "Netzwerkfehler: Die Pokémon TCG API war nicht erreichbar. Bitte Internetverbindung prüfen."
-    );
-  }
+      <div id="missingPanel" class="missing-panel" hidden>
+        <p id="missingPanelHint" class="muted">–</p>
+        <ul id="missingList" class="missing-list"></ul>
+      </div>
 
-  if (!res.ok) {
-    throw new Error(
-      `Pokémon TCG API Fehler (${res.status}). Bitte später erneut versuchen.`
-    );
-  }
+      <div class="tabs" id="cardTabs" role="tablist">
+        <button type="button" class="tab-btn active" data-tab="owned" role="tab" aria-selected="true">Sammlung</button>
+        <button type="button" class="tab-btn" data-tab="wishlist" role="tab" aria-selected="false">Wunschliste</button>
+      </div>
 
-  const json = await res.json();
-  const raw = json.data && json.data[0];
-  if (!raw) {
-    throw new Error(
-      `Keine Karte mit Nummer "${cleanNumber}" in diesem Set gefunden.`
-    );
-  }
+      <p id="wishlistHint" class="wishlist-hint" hidden>
+        Karten auf der Wunschliste zählen nicht zum Sammlungswert. <span id="wishlistTotalHint"></span>
+      </p>
 
-  return normalizeCard(raw);
-}
+      <form id="addCardForm" class="add-card-bar">
+        <input type="text" id="cardNumberInput" placeholder="Kartennummer eingeben (z. B. 4 oder 004/102)" required />
+        <input type="number" id="cardQtyInput" class="qty-input" min="1" value="1" aria-label="Menge" />
+        <button type="submit" id="addCardBtn" class="btn btn-primary">
+          <span class="btn-label">Karte hinzufügen</span>
+          <span class="btn-spinner" hidden>…</span>
+        </button>
+      </form>
+      <p id="addCardError" class="error-text" hidden></p>
 
-function normalizeCard(raw) {
-  return {
-    number: raw.number,
-    name: raw.name,
-    setName: raw.set?.name || null,
-    imageUrl: raw.images?.large || raw.images?.small || null,
-    prices: extractPrices(raw),
-    sourceUrl: raw.cardmarket?.url || raw.tcgplayer?.url || null,
-    priceUpdatedAt: new Date().toISOString(),
-  };
-}
+      <div id="collectionEmptyState" class="empty-state" hidden>
+        <h2>Noch keine Karten</h2>
+        <p class="muted">Gib oben eine Kartennummer ein, um deine erste Karte hinzuzufügen.</p>
+      </div>
 
-// Liefert beide Preise, sofern vorhanden: Cardmarket (EUR) und TCGplayer (USD).
-function extractPrices(raw) {
-  let eur = null;
-  const cm = raw.cardmarket?.prices;
-  if (cm) {
-    const amount = cm.trendPrice ?? cm.averageSellPrice ?? cm.suggestedPrice ?? cm.lowPrice ?? null;
-    if (typeof amount === "number") eur = amount;
-  }
+      <div id="cardsGrid" class="cards-grid" hidden></div>
+    </main>
 
-  let usd = null;
-  const tp = raw.tcgplayer?.prices;
-  if (tp) {
-    const variant = tp.holofoil || tp.normal || tp.reverseHolofoil || tp["1stEditionHolofoil"];
-    if (variant && typeof variant.market === "number") usd = variant.market;
-  }
+    <footer class="app-footer">
+      <p>CardVault · Kartendaten via <a href="https://pokemontcg.io" target="_blank" rel="noopener">pokemontcg.io</a> &amp; <a href="https://optcgapi.com" target="_blank" rel="noopener">optcgapi.com</a></p>
+    </footer>
+  </div>
 
-  return { EUR: eur, USD: usd };
-}
+  <!-- ================= Modal: Neue Sammlung erstellen ================= -->
+  <div id="createModal" class="modal-overlay" hidden>
+    <div class="modal">
+      <div class="modal-head">
+        <h2>Neue Sammlung</h2>
+        <button type="button" id="closeModalBtn" class="modal-close" aria-label="Schließen">×</button>
+      </div>
 
-const CARD_LIST_CACHE_PREFIX = "cardvault:cache:pokemon:setcards:";
-const CARD_LIST_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 Tage
+      <form id="createCollectionForm">
+        <label class="field-label" for="modalGameSwitch">Spiel</label>
+        <div class="segmented" id="modalGameSwitch">
+          <button type="button" class="segmented-btn active" data-game="pokemon">Pokémon</button>
+          <button type="button" class="segmented-btn" data-game="onepiece">One Piece</button>
+        </div>
 
-/**
- * Lädt alle Karten (Nummer + Name) eines Sets, für Fortschrittsanzeige
- * und "fehlende Karten"-Liste. Wird gecached, da Sets sich selten ändern.
- */
-export async function fetchSetCardList(setId) {
-  const cacheKey = CARD_LIST_CACHE_PREFIX + setId;
-  try {
-    const raw = localStorage.getItem(cacheKey);
-    if (raw) {
-      const { ts, list } = JSON.parse(raw);
-      if (Date.now() - ts < CARD_LIST_TTL_MS) return list;
-    }
-  } catch {
-    /* Cache ignorieren bei Fehler */
-  }
+        <label class="field-label" for="setSelect">Set</label>
+        <select id="setSelect" required>
+          <option value="" disabled selected>Sets werden geladen…</option>
+        </select>
+        <p id="setLoadError" class="error-text" hidden></p>
 
-  const res = await fetch(
-    `${BASE}/cards?q=set.id:${encodeURIComponent(setId)}&pageSize=300&orderBy=number`,
-    { headers: headers() }
-  );
-  if (!res.ok) throw new Error(`Kartenliste konnte nicht geladen werden (Status ${res.status}).`);
-  const json = await res.json();
-  const list = (json.data || []).map((raw) => ({ number: raw.number, name: raw.name }));
+        <label class="field-label" for="collectionNameInput">Name der Sammlung</label>
+        <input type="text" id="collectionNameInput" placeholder="z. B. Meine Base-Set-Sammlung" required />
 
-  try {
-    localStorage.setItem(cacheKey, JSON.stringify({ ts: Date.now(), list }));
-  } catch {
-    /* Speicher evtl. voll - ignorieren */
-  }
-  return list;
-}
+        <div class="modal-actions">
+          <button type="button" id="cancelCreateBtn" class="btn btn-ghost">Abbrechen</button>
+          <button type="submit" class="btn btn-primary">Erstellen</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div id="toast" class="toast" hidden></div>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
