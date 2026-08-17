@@ -1,168 +1,191 @@
 <!DOCTYPE html>
 <html lang="de">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>CardVault – TCG Sammlungs-Tracker</title>
-  <meta name="description" content="Verwalte deine Pokémon- und One-Piece-Kartensammlungen: Fortschritt, Wert und Wunschliste." />
-  <link rel="manifest" href="site.webmanifest" />
-  <link rel="icon" href="favicon.svg" type="image/svg+xml" />
-  <link rel="icon" href="icon-32.png" sizes="32x32" type="image/png" />
-  <link rel="icon" href="icon-16.png" sizes="16x16" type="image/png" />
-  <link rel="apple-touch-icon" href="apple-touch-icon.png" />
-  <meta name="theme-color" content="#0b0d14" />
-  <link rel="stylesheet" href="style.css" />
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>CardVault – Pokémon &amp; One Piece Sammlung</title>
+<meta name="description" content="Deine ästhetische TCG-Sammlung für Pokémon und One Piece Karten mit aktuellen Preisen." />
+<link rel="icon" href="favicon.ico" sizes="any" />
+<link rel="icon" href="assets/icons/favicon.svg" type="image/svg+xml" />
+<link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png" />
+<link rel="manifest" href="site.webmanifest" />
+<meta name="theme-color" content="#0b0d14" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="css/style.css" />
 </head>
-<body>
-  <div class="app-shell">
-    <header class="topbar">
-      <div class="brand">
-        <span class="brand-mark">🗂️</span>
-        <span>CardVault</span>
-      </div>
+<body data-active-game="pokemon">
 
-      <div class="game-switch" role="tablist" aria-label="Spiel wählen">
-        <button type="button" class="game-tab active" data-game="pokemon" role="tab" aria-selected="true">
-          <span class="dot dot-pokemon"></span> Pokémon
-        </button>
-        <button type="button" class="game-tab" data-game="onepiece" role="tab" aria-selected="false">
-          <span class="dot dot-onepiece"></span> One Piece
-        </button>
-      </div>
+<div class="app-shell">
 
-      <div class="currency-switch segmented" id="currencySwitch">
-        <button type="button" class="segmented-btn" data-currency="EUR">EUR</button>
-        <button type="button" class="segmented-btn" data-currency="USD">USD</button>
-      </div>
-    </header>
+  <!-- ===== Header / Navigation ===== -->
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark">◆</span>
+      <span class="brand-name">CardVault</span>
+    </div>
 
-    <!-- ================= Dashboard-Ansicht ================= -->
-    <main id="view-dashboard" class="view active">
+    <nav class="game-switch" role="tablist" aria-label="Kartenspiel wählen">
+      <button class="game-tab active" data-game="pokemon" role="tab" aria-selected="true">
+        <span class="dot dot-pokemon"></span> Pokémon
+      </button>
+      <button class="game-tab" data-game="onepiece" role="tab" aria-selected="false">
+        <span class="dot dot-onepiece"></span> One Piece
+      </button>
+    </nav>
+
+    <div class="segmented currency-switch" id="currencySwitch" title="Bevorzugte Preiswährung">
+      <button type="button" class="segmented-btn" data-currency="EUR">EUR</button>
+      <button type="button" class="segmented-btn" data-currency="USD">USD</button>
+    </div>
+
+    <button id="newCollectionBtn" class="btn btn-primary">+ Neue Sammlung</button>
+  </header>
+
+  <!-- ===== Main views ===== -->
+  <main id="view-root" class="view-root">
+
+    <!-- Dashboard View -->
+    <section id="view-dashboard" class="view active">
       <div class="view-header dashboard-header">
         <div>
-          <h1>Meine Sammlungen</h1>
-          <p class="muted">Behalte den Überblick über Wert, Fortschritt und Wunschliste.</p>
+          <h1>Deine Sammlungen</h1>
+          <p class="muted" id="dashboardSubtitle">Alle Sammlungen im Überblick, mit aktuellem Gesamtwert.</p>
         </div>
         <div class="dashboard-actions">
-          <button type="button" id="importBtn" class="btn btn-ghost">Importieren</button>
+          <button class="btn btn-ghost" id="exportBtn">⭳ Exportieren</button>
+          <button class="btn btn-ghost" id="importBtn">⭱ Importieren</button>
           <input type="file" id="importFileInput" accept="application/json" hidden />
-          <button type="button" id="exportBtn" class="btn btn-ghost">Exportieren</button>
-          <button type="button" id="newCollectionBtn" class="btn btn-primary">+ Neue Sammlung</button>
         </div>
       </div>
-
+      <div id="collectionsGrid" class="collections-grid"></div>
       <div id="emptyState" class="empty-state" hidden>
-        <div class="empty-emblem">📦</div>
+        <div class="empty-emblem">🗂️</div>
         <h2>Noch keine Sammlung</h2>
-        <p class="muted">Lege deine erste Sammlung an, um Karten zu erfassen.</p>
-        <button type="button" class="btn btn-primary" data-action="open-create">+ Neue Sammlung</button>
+        <p class="muted">Erstelle deine erste Sammlung für ein Pokémon- oder One&nbsp;Piece-Set und trage Karten per Kartennummer ein.</p>
+        <button class="btn btn-primary" data-action="open-create">+ Sammlung erstellen</button>
       </div>
+    </section>
 
-      <div id="collectionsGrid" class="collections-grid" hidden></div>
-    </main>
-
-    <!-- ================= Sammlungs-Detailansicht ================= -->
-    <main id="view-collection" class="view">
-      <div class="collection-header">
-        <button type="button" id="backToDashboard" class="btn btn-ghost">← Zurück</button>
-
+    <!-- Collection Detail View -->
+    <section id="view-collection" class="view">
+      <div class="view-header collection-header">
+        <button class="btn btn-ghost" id="backToDashboard">← Zurück</button>
         <div class="collection-title-block">
-          <h1 id="collectionTitle">–</h1>
-          <p id="collectionSubtitle" class="muted">–</p>
+          <h1 id="collectionTitle">Sammlung</h1>
+          <p class="muted" id="collectionSubtitle">Set · 0 Karten</p>
         </div>
-
         <div class="collection-value">
-          <div>
-            <div class="value-label">Gesamtwert</div>
-            <div class="value-amount" id="collectionTotalValue">–</div>
-          </div>
-          <div class="value-trend" id="collectionTrend"></div>
+          <span class="value-label">Gesamtwert</span>
+          <span class="value-amount" id="collectionTotalValue">–</span>
+          <div class="value-trend" id="collectionTrend" aria-hidden="true"></div>
         </div>
-
-        <button type="button" id="deleteCollectionBtn" class="btn btn-danger-ghost">Löschen</button>
+        <button class="btn btn-danger-ghost" id="deleteCollectionBtn" title="Sammlung löschen">🗑</button>
       </div>
 
-      <div id="progressRow" class="progress-row" hidden>
+      <div class="progress-row" id="progressRow" hidden>
         <div class="progress-info">
           <span id="progressLabel">0 / 0 Karten</span>
-          <button type="button" id="toggleMissingBtn" class="link-btn">Fehlende Karten anzeigen</button>
+          <button type="button" class="link-btn" id="toggleMissingBtn">Fehlende Karten anzeigen</button>
         </div>
         <div class="progress-track">
-          <div id="progressFill" class="progress-fill" style="width: 0%"></div>
+          <div class="progress-fill" id="progressFill" style="width: 0%"></div>
         </div>
       </div>
-
       <div id="missingPanel" class="missing-panel" hidden>
-        <p id="missingPanelHint" class="muted">–</p>
+        <p class="muted" id="missingPanelHint"></p>
         <ul id="missingList" class="missing-list"></ul>
       </div>
 
       <div class="tabs" id="cardTabs" role="tablist">
-        <button type="button" class="tab-btn active" data-tab="owned" role="tab" aria-selected="true">Sammlung</button>
-        <button type="button" class="tab-btn" data-tab="wishlist" role="tab" aria-selected="false">Wunschliste</button>
+        <button class="tab-btn active" data-tab="owned" role="tab" aria-selected="true">Sammlung</button>
+        <button class="tab-btn" data-tab="wishlist" role="tab" aria-selected="false">Wunschliste</button>
       </div>
-
-      <p id="wishlistHint" class="wishlist-hint" hidden>
-        Karten auf der Wunschliste zählen nicht zum Sammlungswert. <span id="wishlistTotalHint"></span>
+      <p class="muted wishlist-hint" id="wishlistHint" hidden>
+        Karten hier sind Karten, die du dir wünschst – sie zählen nicht zum Gesamtwert deiner Sammlung.
+        <span id="wishlistTotalHint"></span>
       </p>
 
-      <form id="addCardForm" class="add-card-bar">
-        <input type="text" id="cardNumberInput" placeholder="Kartennummer eingeben (z. B. 4 oder 004/102)" required />
-        <input type="number" id="cardQtyInput" class="qty-input" min="1" value="1" aria-label="Menge" />
-        <button type="submit" id="addCardBtn" class="btn btn-primary">
+      <form id="addCardForm" class="add-card-bar" autocomplete="off">
+        <input
+          type="text"
+          id="cardNumberInput"
+          placeholder="Kartennummer eingeben (z. B. 4 oder 004/102)"
+          aria-label="Kartennummer"
+          required
+        />
+        <input
+          type="number"
+          id="cardQtyInput"
+          min="1"
+          value="1"
+          class="qty-input"
+          aria-label="Menge"
+        />
+        <button type="submit" class="btn btn-primary" id="addCardBtn">
           <span class="btn-label">Karte hinzufügen</span>
-          <span class="btn-spinner" hidden>…</span>
+          <span class="btn-spinner" hidden></span>
         </button>
       </form>
       <p id="addCardError" class="error-text" hidden></p>
 
+      <div id="cardsGrid" class="cards-grid"></div>
       <div id="collectionEmptyState" class="empty-state" hidden>
+        <div class="empty-emblem">🔍</div>
         <h2>Noch keine Karten</h2>
         <p class="muted">Gib oben eine Kartennummer ein, um deine erste Karte hinzuzufügen.</p>
       </div>
+    </section>
 
-      <div id="cardsGrid" class="cards-grid" hidden></div>
-    </main>
+  </main>
 
-    <footer class="app-footer">
-      <p>CardVault · Kartendaten via <a href="https://pokemontcg.io" target="_blank" rel="noopener">pokemontcg.io</a> &amp; <a href="https://optcgapi.com" target="_blank" rel="noopener">optcgapi.com</a></p>
-    </footer>
-  </div>
+  <footer class="app-footer">
+    <p>
+      Preis- und Kartendaten via
+      <a href="https://pokemontcg.io" target="_blank" rel="noopener">Pokémon TCG API</a>
+      &amp;
+      <a href="https://optcgapi.com" target="_blank" rel="noopener">OPTCG API</a>.
+      Nicht offiziell mit Pokémon, Nintendo, Bandai oder Eiichiro Oda / One&nbsp;Piece verbunden.
+      Preise dienen nur zur Orientierung.
+    </p>
+  </footer>
+</div>
 
-  <!-- ================= Modal: Neue Sammlung erstellen ================= -->
-  <div id="createModal" class="modal-overlay" hidden>
-    <div class="modal">
-      <div class="modal-head">
-        <h2>Neue Sammlung</h2>
-        <button type="button" id="closeModalBtn" class="modal-close" aria-label="Schließen">×</button>
+<!-- ===== Create Collection Modal ===== -->
+<div id="createModal" class="modal-overlay" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="createModalTitle">
+    <div class="modal-head">
+      <h2 id="createModalTitle">Neue Sammlung erstellen</h2>
+      <button class="modal-close" id="closeModalBtn" aria-label="Schließen">✕</button>
+    </div>
+
+    <form id="createCollectionForm">
+      <label class="field-label">Kartenspiel</label>
+      <div class="segmented" id="modalGameSwitch">
+        <button type="button" class="segmented-btn active" data-game="pokemon">Pokémon</button>
+        <button type="button" class="segmented-btn" data-game="onepiece">One Piece</button>
       </div>
 
-      <form id="createCollectionForm">
-        <label class="field-label" for="modalGameSwitch">Spiel</label>
-        <div class="segmented" id="modalGameSwitch">
-          <button type="button" class="segmented-btn active" data-game="pokemon">Pokémon</button>
-          <button type="button" class="segmented-btn" data-game="onepiece">One Piece</button>
-        </div>
+      <label class="field-label" for="setSelect">Erweiterung / Set</label>
+      <select id="setSelect" required>
+        <option value="" disabled selected>Sets werden geladen…</option>
+      </select>
+      <p id="setLoadError" class="error-text" hidden></p>
 
-        <label class="field-label" for="setSelect">Set</label>
-        <select id="setSelect" required>
-          <option value="" disabled selected>Sets werden geladen…</option>
-        </select>
-        <p id="setLoadError" class="error-text" hidden></p>
+      <label class="field-label" for="collectionNameInput">Name der Sammlung</label>
+      <input type="text" id="collectionNameInput" placeholder="z. B. Meine Grundset-Sammlung" required />
 
-        <label class="field-label" for="collectionNameInput">Name der Sammlung</label>
-        <input type="text" id="collectionNameInput" placeholder="z. B. Meine Base-Set-Sammlung" required />
-
-        <div class="modal-actions">
-          <button type="button" id="cancelCreateBtn" class="btn btn-ghost">Abbrechen</button>
-          <button type="submit" class="btn btn-primary">Erstellen</button>
-        </div>
-      </form>
-    </div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-ghost" id="cancelCreateBtn">Abbrechen</button>
+        <button type="submit" class="btn btn-primary">Sammlung erstellen</button>
+      </div>
+    </form>
   </div>
+</div>
 
-  <div id="toast" class="toast" hidden></div>
+<div id="toast" class="toast" hidden></div>
 
-  <script type="module" src="app.js"></script>
+<script type="module" src="js/app.js"></script>
 </body>
 </html>
