@@ -1,340 +1,184 @@
-// storage.js
-// Persistiert Sammlungen im localStorage des Browsers.
-//
-// Datenmodell:
-// Collection {
-//   id, name, game ('pokemon' | 'onepiece'), setId, setName, setLogo,
-//   createdAt,
-//   setTotal: number|null,          // bekannte Gesamtzahl Karten im Set (Fortschritt)
-//   setCardListCache: [{number,name}]|null,  // für "fehlende Karten" (lazy geladen)
-//   valueHistory: [{ date:'YYYY-MM-DD', amount, currency }],
-//   cards: [ CardEntry ],           // eigene Sammlung
-//   wishlist: [ CardEntry ],        // Wunschliste
-// }
-// CardEntry {
-//   number, name, imageUrl, quantity,
-//   prices: { EUR: number|null, USD: number|null },
-//   sourceUrl, priceUpdatedAt, addedAt
-// }
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CardVault – TCG Sammlungs-Tracker</title>
+  <meta name="description" content="Verwalte deine Pokémon- und One-Piece-Kartensammlungen: Fortschritt, Wert und Wunschliste." />
+  <link rel="manifest" href="site.webmanifest" />
+  <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+  <link rel="icon" href="icon-32.png" sizes="32x32" type="image/png" />
+  <link rel="icon" href="icon-16.png" sizes="16x16" type="image/png" />
+  <link rel="apple-touch-icon" href="apple-touch-icon.png" />
+  <meta name="theme-color" content="#0b0d14" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-mark">🗂️</span>
+        <span>CardVault</span>
+      </div>
 
-const STORAGE_KEY = "cardvault:collections:v2";
-const CURRENCY_KEY = "cardvault:preferredCurrency";
-const LEGACY_KEY = "cardvault:collections:v1";
-const MAX_HISTORY_POINTS = 120;
+      <div class="game-switch" role="tablist" aria-label="Spiel wählen">
+        <button type="button" class="game-tab active" data-game="pokemon" role="tab" aria-selected="true">
+          <span class="dot dot-pokemon"></span> Pokémon
+        </button>
+        <button type="button" class="game-tab" data-game="onepiece" role="tab" aria-selected="false">
+          <span class="dot dot-onepiece"></span> One Piece
+        </button>
+      </div>
 
-function uid() {
-  return Date.now().toString(36) + Math.random().toString(36).slice(2, 9);
-}
+      <div class="currency-switch segmented" id="currencySwitch">
+        <button type="button" class="segmented-btn" data-currency="EUR">EUR</button>
+        <button type="button" class="segmented-btn" data-currency="USD">USD</button>
+      </div>
+    </header>
 
-function todayStr() {
-  return new Date().toISOString().slice(0, 10); // YYYY-MM-DD
-}
+    <!-- ================= Dashboard-Ansicht ================= -->
+    <main id="view-dashboard" class="view active">
+      <div class="view-header dashboard-header">
+        <div>
+          <h1>Meine Sammlungen</h1>
+          <p class="muted">Behalte den Überblick über Wert, Fortschritt und Wunschliste.</p>
+        </div>
+        <div class="dashboard-actions">
+          <button type="button" id="importBtn" class="btn btn-ghost">Importieren</button>
+          <input type="file" id="importFileInput" accept="application/json" hidden />
+          <button type="button" id="exportBtn" class="btn btn-ghost">Exportieren</button>
+          <button type="button" id="newCollectionBtn" class="btn btn-primary">+ Neue Sammlung</button>
+        </div>
+      </div>
 
-// ---------- Migration von v1 (falls vorhanden) ----------
-function migrateLegacyIfNeeded() {
-  if (localStorage.getItem(STORAGE_KEY)) return;
-  const legacyRaw = localStorage.getItem(LEGACY_KEY);
-  if (!legacyRaw) return;
-  try {
-    const legacy = JSON.parse(legacyRaw);
-    const migrated = legacy.map((c) => ({
-      ...c,
-      setTotal: null,
-      setCardListCache: null,
-      valueHistory: [],
-      wishlist: [],
-      cards: (c.cards || []).map((card) => ({
-        ...card,
-        prices: { EUR: card.currency === "EUR" ? card.price : null, USD: card.currency === "USD" ? card.price : null },
-      })),
-    }));
-    saveCollections(migrated);
-  } catch (err) {
-    console.warn("Migration von v1-Daten fehlgeschlagen:", err);
-  }
-}
+      <div id="emptyState" class="empty-state" hidden>
+        <div class="empty-emblem">📦</div>
+        <h2>Noch keine Sammlung</h2>
+        <p class="muted">Lege deine erste Sammlung an, um Karten zu erfassen.</p>
+        <button type="button" class="btn btn-primary" data-action="open-create">+ Neue Sammlung</button>
+      </div>
 
-export function getCollections() {
-  migrateLegacyIfNeeded();
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch (err) {
-    console.error("Konnte Sammlungen nicht laden:", err);
-    return [];
-  }
-}
+      <div id="collectionsGrid" class="collections-grid" hidden></div>
+    </main>
 
-function saveCollections(list) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
-}
+    <!-- ================= Sammlungs-Detailansicht ================= -->
+    <main id="view-collection" class="view">
+      <div class="collection-header">
+        <button type="button" id="backToDashboard" class="btn btn-ghost">← Zurück</button>
 
-export function getCollection(id) {
-  return getCollections().find((c) => c.id === id) || null;
-}
+        <div class="collection-title-block">
+          <h1 id="collectionTitle">–</h1>
+          <p id="collectionSubtitle" class="muted">–</p>
+        </div>
 
-export function createCollection({ name, game, setId, setName, setLogo, setTotal }) {
-  const collections = getCollections();
-  const collection = {
-    id: uid(),
-    name: name.trim(),
-    game,
-    setId,
-    setName,
-    setLogo: setLogo || null,
-    setTotal: typeof setTotal === "number" ? setTotal : null,
-    setCardListCache: null,
-    createdAt: new Date().toISOString(),
-    valueHistory: [],
-    cards: [],
-    wishlist: [],
-  };
-  collections.unshift(collection);
-  saveCollections(collections);
-  return collection;
-}
+        <div class="collection-value">
+          <div>
+            <div class="value-label">Gesamtwert</div>
+            <div class="value-amount" id="collectionTotalValue">–</div>
+          </div>
+          <div class="value-trend" id="collectionTrend"></div>
+        </div>
 
-export function deleteCollection(id) {
-  saveCollections(getCollections().filter((c) => c.id !== id));
-}
+        <button type="button" id="deleteCollectionBtn" class="btn btn-danger-ghost">Löschen</button>
+      </div>
 
-export function updateCollectionMeta(id, patch) {
-  const collections = getCollections();
-  const collection = collections.find((c) => c.id === id);
-  if (!collection) return null;
-  Object.assign(collection, patch);
-  saveCollections(collections);
-  return collection;
-}
+      <div id="progressRow" class="progress-row" hidden>
+        <div class="progress-info">
+          <span id="progressLabel">0 / 0 Karten</span>
+          <button type="button" id="toggleMissingBtn" class="link-btn">Fehlende Karten anzeigen</button>
+        </div>
+        <div class="progress-track">
+          <div id="progressFill" class="progress-fill" style="width: 0%"></div>
+        </div>
+      </div>
 
-// ---------- Karten (Sammlung / Wunschliste) ----------
+      <div id="missingPanel" class="missing-panel" hidden>
+        <p id="missingPanelHint" class="muted">–</p>
+        <ul id="missingList" class="missing-list"></ul>
+      </div>
 
-function listKey(wishlist) {
-  return wishlist ? "wishlist" : "cards";
-}
+      <div class="tabs" id="cardTabs" role="tablist">
+        <button type="button" class="tab-btn active" data-tab="owned" role="tab" aria-selected="true">Sammlung</button>
+        <button type="button" class="tab-btn" data-tab="wishlist" role="tab" aria-selected="false">Wunschliste</button>
+      </div>
 
-export function upsertCard(collectionId, cardData, quantity, { wishlist = false } = {}) {
-  const collections = getCollections();
-  const collection = collections.find((c) => c.id === collectionId);
-  if (!collection) throw new Error("Sammlung nicht gefunden");
+      <p id="wishlistHint" class="wishlist-hint" hidden>
+        Karten auf der Wunschliste zählen nicht zum Sammlungswert. <span id="wishlistTotalHint"></span>
+      </p>
 
-  const key = listKey(wishlist);
-  if (!Array.isArray(collection[key])) collection[key] = [];
-  const list = collection[key];
+      <div class="card-search-bar">
+        <input type="text" id="cardSearchInput" placeholder="Karte nach Namen suchen…" />
+        <button type="button" id="cardSearchBtn" class="btn btn-ghost">Suchen</button>
+      </div>
+      <p id="cardSearchHint" class="muted" hidden></p>
+      <div id="cardSearchResults" class="search-results" hidden></div>
 
-  const existing = list.find((c) => c.number === cardData.number);
-  if (existing) {
-    const newQty = existing.quantity + quantity;
-    Object.assign(existing, cardData, { quantity: newQty });
-  } else {
-    list.push({ ...cardData, quantity, addedAt: new Date().toISOString() });
-  }
-  saveCollections(collections);
-  return collection;
-}
+      <form id="addCardForm" class="add-card-bar">
+        <input type="text" id="cardNumberInput" placeholder="…oder Kartennummer eingeben (z. B. 4 oder 004/102)" required />
+        <input type="number" id="cardQtyInput" class="qty-input" min="1" value="1" aria-label="Menge" />
+        <button type="submit" id="addCardBtn" class="btn btn-primary">
+          <span class="btn-label">Karte hinzufügen</span>
+          <span class="btn-spinner" hidden>…</span>
+        </button>
+      </form>
+      <p id="addCardError" class="error-text" hidden></p>
 
-export function updateCardQuantity(collectionId, number, quantity, { wishlist = false } = {}) {
-  const collections = getCollections();
-  const collection = collections.find((c) => c.id === collectionId);
-  if (!collection) return;
-  const key = listKey(wishlist);
-  const list = collection[key] || [];
-  const card = list.find((c) => c.number === number);
-  if (!card) return;
-  card.quantity = Math.max(0, quantity);
-  if (card.quantity === 0) {
-    collection[key] = list.filter((c) => c.number !== number);
-  }
-  saveCollections(collections);
-}
+      <div id="collectionEmptyState" class="empty-state" hidden>
+        <h2>Noch keine Karten</h2>
+        <p class="muted">Gib oben eine Kartennummer ein, um deine erste Karte hinzuzufügen.</p>
+      </div>
 
-export function removeCard(collectionId, number, { wishlist = false } = {}) {
-  const collections = getCollections();
-  const collection = collections.find((c) => c.id === collectionId);
-  if (!collection) return;
-  const key = listKey(wishlist);
-  collection[key] = (collection[key] || []).filter((c) => c.number !== number);
-  saveCollections(collections);
-}
+      <div id="cardsGrid" class="cards-grid" hidden></div>
+    </main>
 
-/** Verschiebt eine Karte von der Wunschliste in die eigene Sammlung (oder umgekehrt). */
-export function moveCard(collectionId, number, { toWishlist }) {
-  const collections = getCollections();
-  const collection = collections.find((c) => c.id === collectionId);
-  if (!collection) return;
-  const fromKey = listKey(!toWishlist);
-  const toKey = listKey(toWishlist);
-  const fromList = collection[fromKey] || [];
-  const idx = fromList.findIndex((c) => c.number === number);
-  if (idx === -1) return;
-  const [card] = fromList.splice(idx, 1);
-  if (!Array.isArray(collection[toKey])) collection[toKey] = [];
-  const existing = collection[toKey].find((c) => c.number === number);
-  if (existing) {
-    existing.quantity += card.quantity;
-  } else {
-    collection[toKey].push(card);
-  }
-  saveCollections(collections);
-}
+    <footer class="app-footer">
+      <p>CardVault · Kartendaten via <a href="https://pokemontcg.io" target="_blank" rel="noopener">pokemontcg.io</a> &amp; <a href="https://optcgapi.com" target="_blank" rel="noopener">optcgapi.com</a></p>
+    </footer>
+  </div>
 
-// ---------- Preis-Präferenz (EUR/USD) ----------
+  <!-- ================= Modal: Neue Sammlung erstellen ================= -->
+  <div id="createModal" class="modal-overlay" hidden>
+    <div class="modal">
+      <div class="modal-head">
+        <h2>Neue Sammlung</h2>
+        <button type="button" id="closeModalBtn" class="modal-close" aria-label="Schließen">×</button>
+      </div>
 
-export function getPreferredCurrency() {
-  return localStorage.getItem(CURRENCY_KEY) || "EUR";
-}
+      <form id="createCollectionForm">
+        <label class="field-label" for="modalGameSwitch">Spiel</label>
+        <div class="segmented" id="modalGameSwitch">
+          <button type="button" class="segmented-btn active" data-game="pokemon">Pokémon</button>
+          <button type="button" class="segmented-btn" data-game="onepiece">One Piece</button>
+        </div>
 
-export function setPreferredCurrency(currency) {
-  localStorage.setItem(CURRENCY_KEY, currency);
-}
+        <label class="field-label" for="modalTypeSwitch">Art der Sammlung</label>
+        <div class="segmented" id="modalTypeSwitch">
+          <button type="button" class="segmented-btn active" data-type="set">Set-gebunden</button>
+          <button type="button" class="segmented-btn" data-type="free">Freie Sammlung</button>
+        </div>
 
-/** Liefert den anzuzeigenden Preis einer Karte in der bevorzugten Währung,
- *  fällt auf die jeweils andere verfügbare Währung zurück. */
-export function resolveCardPrice(card, preferred = getPreferredCurrency()) {
-  const prices = card.prices || {};
-  if (typeof prices[preferred] === "number") {
-    return { amount: prices[preferred], currency: preferred, isFallback: false };
-  }
-  const other = preferred === "EUR" ? "USD" : "EUR";
-  if (typeof prices[other] === "number") {
-    return { amount: prices[other], currency: other, isFallback: true };
-  }
-  return { amount: null, currency: null, isFallback: false };
-}
+        <div id="setPickerGroup">
+          <label class="field-label" for="setSelect">Set</label>
+          <select id="setSelect">
+            <option value="" disabled selected>Sets werden geladen…</option>
+          </select>
+          <p id="setLoadError" class="error-text" hidden></p>
+        </div>
+        <p id="freeHint" class="muted" hidden>Lege Karten frei zusammen, unabhängig vom Set – ideal für eine gemischte Lieblingssammlung.</p>
 
-export function collectionTotalValue(collection, { wishlist = false } = {}) {
-  const preferred = getPreferredCurrency();
-  const list = collection[listKey(wishlist)] || [];
-  let amount = 0;
-  let hasAnyPrice = false;
-  let mixed = false;
+        <label class="field-label" for="collectionNameInput">Name der Sammlung</label>
+        <input type="text" id="collectionNameInput" placeholder="z. B. Meine Base-Set-Sammlung" required />
 
-  for (const card of list) {
-    const resolved = resolveCardPrice(card, preferred);
-    if (typeof resolved.amount === "number") {
-      hasAnyPrice = true;
-      if (resolved.currency !== preferred) mixed = true;
-      amount += resolved.amount * card.quantity;
-    }
-  }
+        <div class="modal-actions">
+          <button type="button" id="cancelCreateBtn" class="btn btn-ghost">Abbrechen</button>
+          <button type="submit" class="btn btn-primary">Erstellen</button>
+        </div>
+      </form>
+    </div>
+  </div>
 
-  return { amount, currency: preferred, mixed, hasAnyPrice };
-}
+  <div id="toast" class="toast" hidden></div>
 
-// ---------- Wertverlauf ----------
-
-export function recordValueSnapshot(collectionId) {
-  const collections = getCollections();
-  const collection = collections.find((c) => c.id === collectionId);
-  if (!collection) return;
-
-  const { amount, currency, hasAnyPrice } = collectionTotalValue(collection, { wishlist: false });
-  if (!hasAnyPrice) return; // keine Snapshot ohne Preisdaten
-
-  if (!Array.isArray(collection.valueHistory)) collection.valueHistory = [];
-  const today = todayStr();
-  const last = collection.valueHistory[collection.valueHistory.length - 1];
-
-  if (last && last.date === today) {
-    last.amount = amount;
-    last.currency = currency;
-  } else {
-    collection.valueHistory.push({ date: today, amount, currency });
-  }
-
-  if (collection.valueHistory.length > MAX_HISTORY_POINTS) {
-    collection.valueHistory = collection.valueHistory.slice(-MAX_HISTORY_POINTS);
-  }
-  saveCollections(collections);
-}
-
-// ---------- Set-Fortschritt ----------
-
-export function setSetCardListCache(collectionId, list) {
-  const collections = getCollections();
-  const collection = collections.find((c) => c.id === collectionId);
-  if (!collection) return;
-  collection.setCardListCache = list;
-  if (!collection.setTotal) collection.setTotal = list.length;
-  saveCollections(collections);
-}
-
-export function setProgress(collection) {
-  const owned = new Set((collection.cards || []).map((c) => c.number));
-  const ownedUniqueCount = owned.size;
-  const total = collection.setTotal;
-  if (!total) return { owned: ownedUniqueCount, total: null, percent: null };
-  return {
-    owned: ownedUniqueCount,
-    total,
-    percent: Math.min(100, Math.round((ownedUniqueCount / total) * 100)),
-  };
-}
-
-export function missingCards(collection) {
-  const cache = collection.setCardListCache;
-  if (!cache) return null;
-  const owned = new Set((collection.cards || []).map((c) => c.number));
-  return cache.filter((c) => !owned.has(c.number));
-}
-
-// ---------- Export / Import ----------
-
-export function exportAllData() {
-  const payload = {
-    app: "CardVault",
-    exportedAt: new Date().toISOString(),
-    version: 2,
-    collections: getCollections(),
-  };
-  return JSON.stringify(payload, null, 2);
-}
-
-/**
- * Importiert Sammlungen aus einem zuvor exportierten JSON-String.
- * mode "merge": bestehende Sammlungen bleiben, importierte werden ergänzt (neue IDs bei Konflikt).
- * mode "replace": bestehende Sammlungen werden komplett ersetzt.
- */
-export function importAllData(jsonString, mode = "merge") {
-  let payload;
-  try {
-    payload = JSON.parse(jsonString);
-  } catch {
-    throw new Error("Datei ist kein gültiges JSON.");
-  }
-  const incoming = Array.isArray(payload) ? payload : payload.collections;
-  if (!Array.isArray(incoming)) {
-    throw new Error("Unerwartetes Datenformat: keine Sammlungen gefunden.");
-  }
-
-  if (mode === "replace") {
-    saveCollections(incoming);
-    return { imported: incoming.length, mode };
-  }
-
-  const existing = getCollections();
-  const existingIds = new Set(existing.map((c) => c.id));
-  const toAdd = incoming.map((c) => {
-    if (existingIds.has(c.id)) {
-      return { ...c, id: uid() };
-    }
-    return c;
-  });
-  saveCollections([...toAdd, ...existing]);
-  return { imported: toAdd.length, mode };
-}
-
-// ---------- Formatierung ----------
-
-export function formatMoney(amount, currency) {
-  try {
-    return new Intl.NumberFormat("de-DE", {
-      style: "currency",
-      currency: currency || "EUR",
-    }).format(amount);
-  } catch {
-    return `${amount.toFixed(2)} ${currency || ""}`;
-  }
-}
+  <script type="module" src="app.js"></script>
+</body>
+</html>
